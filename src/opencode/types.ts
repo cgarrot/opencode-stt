@@ -14,6 +14,9 @@ export type TuiPluginApi = {
   command: {
     register(cb: () => TuiCommand[]): () => void
   }
+  keymap?: {
+    registerLayer(layer: TuiKeymapLayer): () => void
+  }
   ui: {
     toast(input: TuiToastInput): void
   }
@@ -23,6 +26,7 @@ export type TuiPluginApi = {
   client: {
     tui: {
       appendPrompt(input: { text: string }): Promise<unknown>
+      submitPrompt?(): Promise<unknown>
     }
   }
   lifecycle: {
@@ -43,6 +47,25 @@ export type TuiCommand = {
   category?: string
   keybind?: string
   onSelect?: () => void
+}
+
+export type TuiKeymapCommand = {
+  name: string
+  title: string
+  category?: string
+  run(): void | Promise<void>
+}
+
+export type TuiKeymapBinding = {
+  key: string
+  cmd: string
+  desc?: string
+}
+
+export type TuiKeymapLayer = {
+  priority?: number
+  commands: TuiKeymapCommand[]
+  bindings: TuiKeymapBinding[]
 }
 
 export type TuiPlugin = (api: TuiPluginApi, options: Record<string, unknown> | undefined) => Promise<void>

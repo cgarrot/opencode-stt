@@ -4,6 +4,7 @@ import { createDictationController } from "../core/dictation-controller"
 import { loadConfig } from "../config/load-config"
 import { createProvider } from "../providers/factory"
 import { objectFrom } from "../utils/coerce"
+import { createEnterSubmitRegistration } from "./enter-submit"
 import { recordKeyFromOptions } from "./options"
 import { showError } from "./ui"
 import type { TuiPlugin } from "./types"
@@ -15,6 +16,17 @@ export const tui: TuiPlugin = async (api, options) => {
   const voiceIndicator = createVoiceIndicator(recordKey, { requestRender: () => api.renderer?.requestRender() })
   const slotRegistration = api.slots?.register(voiceIndicator.plugin)
   const unregisterHint = typeof slotRegistration === "function" ? slotRegistration : () => {}
+  const submitPrompt = api.client.tui.submitPrompt
+    ? () => {
+        if (!api.client.tui.submitPrompt) throw new Error("OpenCode TUI submitPrompt API is not available.")
+        return api.client.tui.submitPrompt()
+      }
+    : undefined
+
+  const stopAndSubmit = () => {
+    void controller.stopAndSubmit().catch((error) => showError(api, error))
+  }
+  const enterSubmit = createEnterSubmitRegistration(api, stopAndSubmit, () => Boolean(submitPrompt))
 
   const controller = createDictationController({
     recordKey,
@@ -22,8 +34,13 @@ export const tui: TuiPlugin = async (api, options) => {
     createRecorder: (config) => createFfmpegRecorder(config.capture),
     createProvider: (config) => createProvider(config.provider),
     appendPrompt: (text) => api.client.tui.appendPrompt({ text }),
+    submitPrompt,
     notify: (toast) => api.ui.toast(toast),
-    onModeChange: voiceIndicator.setMode,
+    onModeChange: (mode) => {
+      voiceIndicator.setMode(mode)
+      if (mode === "recording") enterSubmit.register()
+      else enterSubmit.unregister()
+    },
     onError: (error) => showError(api, error),
   })
 
@@ -42,6 +59,7 @@ export const tui: TuiPlugin = async (api, options) => {
 
   api.lifecycle.onDispose(async () => {
     unregister()
+    enterSubmit.unregister()
     unregisterHint()
     voiceIndicator.dispose()
     await controller.dispose()
