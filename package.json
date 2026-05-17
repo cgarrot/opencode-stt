@@ -1,0 +1,34 @@
+{
+  "name": "opencode-stt",
+  "version": "0.1.0",
+  "description": "Provider-agnostic speech-to-text dictation plugin for the OpenCode TUI.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "bun@1.3.13",
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "exports": {
+    ".": "./voxtral-stt.tsx",
+    "./tui": "./voxtral-stt.tsx"
+  },
+  "files": [
+    "src",
+    "voxtral-stt.tsx",
+    "types.d.ts",
+    "README.md",
+    "LICENSE",
+    "examples"
+  ],
+  "scripts": {
+    "typecheck": "bun --preload @opentui/solid/preload --check voxtral-stt.tsx",
+    "test": "bun test tests",
+    "smoke": "bun --preload @opentui/solid/preload -e 'import plugin from \"./voxtral-stt.tsx\"; import packaged from \"opencode-stt/tui\"; if (plugin.id !== \"opencode-stt\" || packaged.id !== \"opencode-stt\") throw new Error(\"bad plugin id\"); console.log(plugin.id)'",
+    "ci": "bun run typecheck && bun run test && bun run smoke"
+  },
+  "dependencies": {
+    "@opentui/core": "0.2.2",
+    "@opentui/solid": "0.2.2",
+    "solid-js": "1.9.12"
+  }
+}
