@@ -1,0 +1,15 @@
+{
+  "capture": {
+    "type": "ffmpeg",
+    "inputFormat": "avfoundation",
+    "input": ":0",
+    "sampleRate": 16000,
+    "channels": 1
+  },
+  "provider": {
+    "type": "groq",
+    "model": "whisper-large-v3-turbo",
+    "apiKeyEnv": "GROQ_API_KEY",
+    "language": "fr"
+  }
+}

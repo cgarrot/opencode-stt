@@ -1,0 +1,15 @@
+{
+  // OpenCode TUI config example. Adjust paths to your checkout.
+  "plugin": [
+    [
+      "/absolute/path/to/opencode-stt/voxtral-stt.tsx",
+      {
+        "configPath": "/absolute/path/to/opencode-stt/config.local.json",
+        "keybind": "ctrl+r"
+      }
+    ]
+  ],
+  "keybinds": {
+    "session_rename": "none"
+  }
+}

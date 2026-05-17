@@ -1,0 +1,16 @@
+{
+  "capture": {
+    "type": "ffmpeg",
+    "inputFormat": "avfoundation",
+    "input": ":0",
+    "sampleRate": 16000,
+    "channels": 1
+  },
+  "provider": {
+    "type": "openai-compatible",
+    "endpoint": "http://localhost:10301/v1/audio/transcriptions",
+    "model": "whisper-1",
+    "apiKeyEnv": "",
+    "language": "fr"
+  }
+}
