@@ -18,9 +18,14 @@ export type DictationControllerOptions = {
   createRecorder(config: PluginConfig): AudioRecorder
   createProvider(config: PluginConfig): { transcribe(input: { audioPath: string; language?: string; signal: AbortSignal }): Promise<{ text: string }> }
   appendPrompt(text: string): Promise<unknown>
+  submitPrompt?(): Promise<unknown>
   notify(toast: DictationControllerToast): void
   onModeChange?(mode: DictationMode): void
   onError(error: unknown): void
+}
+
+type StopRecordingOptions = {
+  submitAfterAppend?: boolean
 }
 
 export const createDictationController = (options: DictationControllerOptions) => {
@@ -47,7 +52,13 @@ export const createDictationController = (options: DictationControllerOptions) =
     await options.appendPrompt(text)
   }
 
-  const stopActiveRecording = async (active: RecordingHandle, config: PluginConfig) => {
+  const submitPrompt = async () => {
+    if (disposed) return
+    if (!options.submitPrompt) throw new Error("Prompt submission is not available in this OpenCode TUI API.")
+    await options.submitPrompt()
+  }
+
+  const stopActiveRecording = async (active: RecordingHandle, config: PluginConfig, stopOptions: StopRecordingOptions) => {
     const provider = options.createProvider(config)
     const controller = new AbortController()
     transcriptionController = controller
@@ -59,7 +70,12 @@ export const createDictationController = (options: DictationControllerOptions) =
       if (disposed) return
       const result = await provider.transcribe({ audioPath, language: config.provider.language, signal: controller.signal })
       await appendPrompt(formatTranscriptForPrompt(result.text, config.output))
-      notify({ title: "OpenCode STT", message: "Transcript inserted into prompt.", variant: "success" })
+      if (stopOptions.submitAfterAppend) await submitPrompt()
+      notify({
+        title: "OpenCode STT",
+        message: stopOptions.submitAfterAppend ? "Transcript sent to chat." : "Transcript inserted into prompt.",
+        variant: "success",
+      })
     } finally {
       clearTimeout(timeout)
       if (transcriptionController === controller) transcriptionController = undefined
@@ -67,41 +83,49 @@ export const createDictationController = (options: DictationControllerOptions) =
     }
   }
 
-  const toggle = async () => {
+  const stopRecording = async (stopOptions: StopRecordingOptions = {}) => {
     if (disposed) return
     if (processing) {
       notify({ title: "OpenCode STT", message: "Still processing the previous recording…", variant: "warning" })
       return
     }
 
-    if (recording) {
-      processing = true
-      setMode("processing")
-      const active = recording
-      const activeConfig = recordingConfig
-      recording = undefined
-      recordingConfig = undefined
-      if (active.timeout) clearTimeout(active.timeout)
+    if (!recording) return
 
-      const operation = activeConfig
-        ? stopActiveRecording(active, activeConfig)
-        : Promise.reject(new Error("Recording config was not available."))
-      activeOperation = operation
-      try {
-        await operation
-      } catch (error) {
-        if (!disposed) throw error
-      } finally {
-        if (activeOperation === operation) activeOperation = undefined
-        processing = false
-        setMode("idle")
-      }
+    processing = true
+    setMode("processing")
+    const active = recording
+    const activeConfig = recordingConfig
+    recording = undefined
+    recordingConfig = undefined
+    if (active.timeout) clearTimeout(active.timeout)
+
+    const operation = activeConfig
+      ? stopActiveRecording(active, activeConfig, stopOptions)
+      : Promise.reject(new Error("Recording config was not available."))
+    activeOperation = operation
+    try {
+      await operation
+    } catch (error) {
+      if (!disposed) throw error
+    } finally {
+      if (activeOperation === operation) activeOperation = undefined
+      processing = false
+      setMode("idle")
+    }
+  }
+
+  const toggle = async () => {
+    if (recording || processing) {
+      await stopRecording()
       return
     }
 
+    if (disposed) return
     processing = true
     try {
       const config = await options.loadConfig()
+      if (disposed) return
       assertProviderReady(config.provider)
       const recorder = options.createRecorder(config)
       recording = recorder.start()
@@ -113,7 +137,9 @@ export const createDictationController = (options: DictationControllerOptions) =
       setMode("recording")
       notify({
         title: "OpenCode STT",
-        message: `Recording… press ${options.recordKey} again to stop.`,
+        message: options.submitPrompt
+          ? `Recording… press ${options.recordKey} again to stop, or Enter to send.`
+          : `Recording… press ${options.recordKey} again to stop.`,
         variant: "info",
         duration: 5000,
       })
@@ -142,6 +168,7 @@ export const createDictationController = (options: DictationControllerOptions) =
 
   return {
     toggle,
+    stopAndSubmit: () => stopRecording({ submitAfterAppend: true }),
     dispose,
     getMode: () => mode,
   }
