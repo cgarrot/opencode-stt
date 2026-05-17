@@ -29,6 +29,10 @@ ffmpeg -f avfoundation -list_devices true -i ""
 
 Then set `capture.input` to the audio device, for example `":0"`.
 
+## Installation
+
+For a step-by-step setup guide and a copy-paste prompt you can give to OpenCode or another coding agent, see [INSTALL.md](./INSTALL.md).
+
 ## OpenCode configuration
 
 Create or update your OpenCode TUI config, usually `~/.config/opencode/tui.json` or `tui.jsonc`:
