@@ -1,0 +1,9 @@
+config.local.json
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+coverage/
+*.wav
+*.tmp
