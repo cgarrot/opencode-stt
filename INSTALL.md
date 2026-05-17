@@ -63,6 +63,7 @@ Steps:
 8. Restart OpenCode and test manually:
    - Press Ctrl+R once to start recording.
    - Press Ctrl+R again to stop and transcribe.
+   - Or press Enter while recording to stop, transcribe, and send the prompt immediately.
    - Confirm the prompt receives the transcript.
 ```
 

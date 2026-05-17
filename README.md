@@ -1,12 +1,12 @@
 # OpenCode STT
 
-Provider-agnostic speech-to-text dictation for the OpenCode TUI. Press `Ctrl+R` to record your microphone, press it again to transcribe, and the transcript is appended to the active prompt.
+Provider-agnostic speech-to-text dictation for the OpenCode TUI. Press `Ctrl+R` to record your microphone, press it again to transcribe and append the transcript to the active prompt, or press `Enter` while recording to transcribe and send it directly to chat.
 
 The plugin started as a Mistral Voxtral integration, but now supports a small provider abstraction for cloud and local STT backends.
 
 ## Features
 
-- OpenCode TUI command and prompt-slot indicator.
+- OpenCode TUI command and prompt-slot indicator, with `Enter`-to-send while recording.
 - `ffmpeg` microphone recording to temporary WAV files.
 - Mistral Voxtral provider.
 - OpenAI-compatible provider for OpenAI, Groq, `whisper.cpp`, `faster-whisper`/agent servers, and many local endpoints.
@@ -153,7 +153,7 @@ The old flat config still works for Mistral-style usage:
 
 ## Voice indicator
 
-The prompt slot shows `ctrl+r voice input` while idle. During recording it switches to a compact waveform-style indicator (`● ▁▅▇▃ listening`) and then to `transcribing` while the provider request is running.
+The prompt slot shows `ctrl+r voice input` while idle. During recording it switches to a compact waveform-style indicator (`● ▁▅▇▃ listening`) and `Enter` temporarily stops the recording, inserts the transcript, and submits the prompt. The indicator then switches to `transcribing` while the provider request is running.
 
 The current indicator is an OpenCode/OpenTUI-friendly animated status indicator. It does not yet read real microphone amplitude; doing that would require parsing live audio levels from `ffmpeg` or switching to a streaming audio pipeline.
 
