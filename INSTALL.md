@@ -64,6 +64,7 @@ Steps:
    - Press Ctrl+R once to start recording.
    - Press Ctrl+R again to stop and transcribe.
    - Or press Enter while recording to stop, transcribe, and send the prompt immediately.
+   - Or press Esc while recording or transcribing to cancel without inserting text.
    - Confirm the prompt receives the transcript.
 ```
 

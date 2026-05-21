@@ -28,12 +28,22 @@ type StopRecordingOptions = {
   submitAfterAppend?: boolean
 }
 
+const PROMPT_APPEND_FLUSH_DELAY_MS = 50
+
+// OpenCode applies appendPrompt through the TUI event loop; wait a short frame so
+// the prompt store sees the inserted transcript before submitPrompt reads it.
+const waitForPromptAppendFlush = () =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, PROMPT_APPEND_FLUSH_DELAY_MS)
+  })
+
 export const createDictationController = (options: DictationControllerOptions) => {
   let recording: RecordingHandle | undefined
   let recordingConfig: PluginConfig | undefined
   let activeOperation: Promise<void> | undefined
   let transcriptionController: AbortController | undefined
   let processing = false
+  let cancelRequested = false
   let mode: DictationMode = "idle"
   let disposed = false
 
@@ -69,13 +79,19 @@ export const createDictationController = (options: DictationControllerOptions) =
       const audioPath = await active.stop()
       if (disposed) return
       const result = await provider.transcribe({ audioPath, language: config.provider.language, signal: controller.signal })
+      if (cancelRequested || disposed) return
       await appendPrompt(formatTranscriptForPrompt(result.text, config.output))
-      if (stopOptions.submitAfterAppend) await submitPrompt()
-      notify({
-        title: "OpenCode STT",
-        message: stopOptions.submitAfterAppend ? "Transcript sent to chat." : "Transcript inserted into prompt.",
-        variant: "success",
-      })
+      if (stopOptions.submitAfterAppend) {
+        await waitForPromptAppendFlush()
+        await submitPrompt()
+      }
+      if (!cancelRequested) {
+        notify({
+          title: "OpenCode STT",
+          message: stopOptions.submitAfterAppend ? "Transcript sent to chat." : "Transcript inserted into prompt.",
+          variant: "success",
+        })
+      }
     } finally {
       clearTimeout(timeout)
       if (transcriptionController === controller) transcriptionController = undefined
@@ -107,11 +123,44 @@ export const createDictationController = (options: DictationControllerOptions) =
     try {
       await operation
     } catch (error) {
-      if (!disposed) throw error
+      if (!cancelRequested && !disposed) throw error
     } finally {
       if (activeOperation === operation) activeOperation = undefined
       processing = false
+      cancelRequested = false
       setMode("idle")
+    }
+  }
+
+  const cancelActiveRecording = async (active: RecordingHandle) => {
+    if (active.timeout) clearTimeout(active.timeout)
+    await active.dispose()
+  }
+
+  const cancel = async () => {
+    if (disposed) return
+
+    if (recording && !processing) {
+      cancelRequested = true
+      const active = recording
+      recording = undefined
+      recordingConfig = undefined
+      await cancelActiveRecording(active)
+      cancelRequested = false
+      setMode("idle")
+      notify({ title: "OpenCode STT", message: "Recording cancelled.", variant: "info" })
+      return
+    }
+
+    if (processing) {
+      cancelRequested = true
+      transcriptionController?.abort()
+      notify({ title: "OpenCode STT", message: "Transcription cancelled.", variant: "info" })
+      try {
+        await activeOperation
+      } catch {
+        // stopRecording handles aborted transcription
+      }
     }
   }
 
@@ -138,8 +187,8 @@ export const createDictationController = (options: DictationControllerOptions) =
       notify({
         title: "OpenCode STT",
         message: options.submitPrompt
-          ? `Recording… press ${options.recordKey} again to stop, or Enter to send.`
-          : `Recording… press ${options.recordKey} again to stop.`,
+          ? `Recording… press ${options.recordKey} again to stop, Enter to send, or Esc to cancel.`
+          : `Recording… press ${options.recordKey} again to stop, or Esc to cancel.`,
         variant: "info",
         duration: 5000,
       })
@@ -169,6 +218,7 @@ export const createDictationController = (options: DictationControllerOptions) =
   return {
     toggle,
     stopAndSubmit: () => stopRecording({ submitAfterAppend: true }),
+    cancel,
     dispose,
     getMode: () => mode,
   }

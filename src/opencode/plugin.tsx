@@ -4,7 +4,7 @@ import { createDictationController } from "../core/dictation-controller"
 import { loadConfig } from "../config/load-config"
 import { createProvider } from "../providers/factory"
 import { objectFrom } from "../utils/coerce"
-import { createEnterSubmitRegistration } from "./enter-submit"
+import { createRecordingKeymapRegistration } from "./recording-keymap"
 import { recordKeyFromOptions } from "./options"
 import { showError } from "./ui"
 import type { TuiPlugin } from "./types"
@@ -26,7 +26,14 @@ export const tui: TuiPlugin = async (api, options) => {
   const stopAndSubmit = () => {
     void controller.stopAndSubmit().catch((error) => showError(api, error))
   }
-  const enterSubmit = createEnterSubmitRegistration(api, stopAndSubmit, () => Boolean(submitPrompt))
+  const cancelRecording = () => {
+    void controller.cancel().catch((error) => showError(api, error))
+  }
+  const recordingKeymap = createRecordingKeymapRegistration(api, {
+    stopAndSubmit,
+    cancel: cancelRecording,
+    canSubmitPrompt: () => Boolean(submitPrompt),
+  })
 
   const controller = createDictationController({
     recordKey,
@@ -38,8 +45,9 @@ export const tui: TuiPlugin = async (api, options) => {
     notify: (toast) => api.ui.toast(toast),
     onModeChange: (mode) => {
       voiceIndicator.setMode(mode)
-      if (mode === "recording") enterSubmit.register()
-      else enterSubmit.unregister()
+      if (mode === "recording") recordingKeymap.registerForRecording()
+      else if (mode === "processing") recordingKeymap.registerForProcessing()
+      else recordingKeymap.unregister()
     },
     onError: (error) => showError(api, error),
   })
@@ -59,7 +67,7 @@ export const tui: TuiPlugin = async (api, options) => {
 
   api.lifecycle.onDispose(async () => {
     unregister()
-    enterSubmit.unregister()
+    recordingKeymap.unregister()
     unregisterHint()
     voiceIndicator.dispose()
     await controller.dispose()

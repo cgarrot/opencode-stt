@@ -127,6 +127,215 @@ test("stopAndSubmit appends transcript before submitting prompt", async () => {
   expect(modes).toEqual(["recording", "processing", "idle"])
 })
 
+test("stopAndSubmit waits for prompt append to flush before submitting", async () => {
+  const events: string[] = []
+  let resolveAppendStarted: (() => void) | undefined
+  let resolveAppend: (() => void) | undefined
+  const appendStarted = new Promise<void>((resolve) => {
+    resolveAppendStarted = resolve
+  })
+  const appendFinished = new Promise<void>((resolve) => {
+    resolveAppend = resolve
+  })
+
+  const controller = createDictationController({
+    recordKey: "ctrl+r",
+    loadConfig: async () => config,
+    createRecorder: () => ({
+      start: () => ({
+        outputPath: "/tmp/recording.wav",
+        timeout: undefined,
+        stop: async () => {
+          events.push("stop")
+          return "/tmp/recording.wav"
+        },
+        dispose: async () => {
+          events.push("dispose")
+        },
+      }),
+    }),
+    createProvider: () => ({
+      transcribe: async () => {
+        events.push("transcribe")
+        return { text: "bonjour" }
+      },
+    }),
+    appendPrompt: async (text) => {
+      events.push(`append:${text}`)
+      resolveAppendStarted?.()
+      await appendFinished
+    },
+    submitPrompt: async () => {
+      events.push("submit")
+    },
+    notify: () => {},
+    onError: () => {},
+  })
+
+  await controller.toggle()
+  const stopPromise = controller.stopAndSubmit()
+  await appendStarted
+  expect(events).toEqual(["stop", "transcribe", "append:bonjour "])
+
+  resolveAppend?.()
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(events).toEqual(["stop", "transcribe", "append:bonjour "])
+
+  await stopPromise
+  expect(events).toEqual(["stop", "transcribe", "append:bonjour ", "submit", "dispose"])
+})
+
+test("stopAndSubmit handles two recording cycles", async () => {
+  const events: string[] = []
+  let recordingCount = 0
+
+  const controller = createDictationController({
+    recordKey: "ctrl+r",
+    loadConfig: async () => config,
+    createRecorder: () => ({
+      start: () => {
+        recordingCount += 1
+        const current = recordingCount
+        return {
+          outputPath: `/tmp/recording-${current}.wav`,
+          timeout: undefined,
+          stop: async () => {
+            events.push(`stop:${current}`)
+            return `/tmp/recording-${current}.wav`
+          },
+          dispose: async () => {
+            events.push(`dispose:${current}`)
+          },
+        }
+      },
+    }),
+    createProvider: () => ({
+      transcribe: async (input) => {
+        events.push(`transcribe:${input.audioPath}`)
+        return { text: input.audioPath.endsWith("1.wav") ? "bonjour" : "salut" }
+      },
+    }),
+    appendPrompt: async (text) => {
+      events.push(`append:${text}`)
+    },
+    submitPrompt: async () => {
+      events.push("submit")
+    },
+    notify: () => {},
+    onError: () => {},
+  })
+
+  await controller.toggle()
+  await controller.stopAndSubmit()
+  await controller.toggle()
+  await controller.stopAndSubmit()
+
+  expect(events).toEqual([
+    "stop:1",
+    "transcribe:/tmp/recording-1.wav",
+    "append:bonjour ",
+    "submit",
+    "dispose:1",
+    "stop:2",
+    "transcribe:/tmp/recording-2.wav",
+    "append:salut ",
+    "submit",
+    "dispose:2",
+  ])
+  expect(controller.getMode()).toEqual("idle")
+})
+
+test("cancel during recording disposes without transcribing", async () => {
+  const events: string[] = []
+  const modes: DictationMode[] = []
+
+  const controller = createDictationController({
+    recordKey: "ctrl+r",
+    loadConfig: async () => config,
+    createRecorder: () => ({
+      start: () => ({
+        outputPath: "/tmp/recording.wav",
+        timeout: undefined,
+        stop: async () => {
+          events.push("stop")
+          return "/tmp/recording.wav"
+        },
+        dispose: async () => {
+          events.push("dispose")
+        },
+      }),
+    }),
+    createProvider: () => ({
+      transcribe: async () => {
+        events.push("transcribe")
+        return { text: "bonjour" }
+      },
+    }),
+    appendPrompt: async () => {
+      events.push("append")
+    },
+    notify: () => {},
+    onModeChange: (mode) => modes.push(mode),
+    onError: () => {},
+  })
+
+  await controller.toggle()
+  await controller.cancel()
+
+  expect(events).toEqual(["dispose"])
+  expect(controller.getMode()).toEqual("idle")
+  expect(modes).toEqual(["recording", "idle"])
+})
+
+test("cancel during processing aborts transcription without appending", async () => {
+  let appendCount = 0
+  let resolveTranscribeStarted: (() => void) | undefined
+  const transcribeStarted = new Promise<void>((resolve) => {
+    resolveTranscribeStarted = resolve
+  })
+  const modes: DictationMode[] = []
+
+  const controller = createDictationController({
+    recordKey: "ctrl+r",
+    loadConfig: async () => config,
+    createRecorder: () => ({
+      start: () => ({
+        outputPath: "/tmp/recording.wav",
+        timeout: undefined,
+        stop: async () => "/tmp/recording.wav",
+        dispose: async () => {},
+      }),
+    }),
+    createProvider: () => ({
+      transcribe: (input) => {
+        resolveTranscribeStarted?.()
+        return new Promise((_, reject) => {
+          input.signal.addEventListener("abort", () => reject(new Error("aborted")))
+        })
+      },
+    }),
+    appendPrompt: async () => {
+      appendCount += 1
+    },
+    notify: () => {},
+    onModeChange: (mode) => modes.push(mode),
+    onError: () => {},
+  })
+
+  await controller.toggle()
+  const stopPromise = controller.toggle()
+  await transcribeStarted
+  await controller.cancel()
+  await stopPromise
+
+  expect(appendCount).toEqual(0)
+  expect(controller.getMode()).toEqual("idle")
+  expect(modes).toContain("recording")
+  expect(modes).toContain("processing")
+  expect(modes).toContain("idle")
+})
+
 test("dispose during config load prevents recorder startup", async () => {
   let resolveConfig: ((value: PluginConfig) => void) | undefined
   const configLoading = new Promise<PluginConfig>((resolve) => {
